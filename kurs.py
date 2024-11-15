@@ -19,47 +19,54 @@ class SemanticObjectEditor:
         # Определение главного объекта
         main_entity = None
         for token in doc:
-            if token.dep_ in ("nsubj", "ROOT") and token.pos_ == "NOUN":
+            if token.dep_ in ("nsubj", "ROOT") and token.pos_ in ("NOUN", "PROPN"):
                 main_entity = token.text
                 entities.append((main_entity, "MainEntity"))
                 break
 
         if main_entity:
             for token in doc:
-                # Атрибуты главного объекта, такие как "young", "fluffy", "animal"
-                if token.head.text == main_entity and token.dep_ in ("amod", "nummod") and token.text != "often":
+                # Составные атрибуты (например, "loyal animal")
+                if token.dep_ == "amod" and token.head.dep_ in ("attr", "nsubj"):
+                    compound_text = f"{token.text} {token.head.text}"
+                    entities.append((compound_text, "Attribute"))
+                    relations.append((main_entity, compound_text, "has_attribute"))
+
+                # Обычные атрибуты
+                elif token.head.text == main_entity and token.dep_ in ("amod", "compound", "attr", "nummod"):
                     entities.append((token.text, "Attribute"))
                     relations.append((main_entity, token.text, "has_attribute"))
 
-                # Обработка действия "meows"
-                elif token.text == "meows" and token.pos_ == "VERB":
-                    entities.append((token.text, "Action"))
-                    relations.append((main_entity, token.text, "can_do"))
+                # Действия (глаголы)
+                if token.pos_ == "VERB" and token.dep_ not in ("aux", "cop"):
+                    entities.append((token.lemma_, "Action"))
+                    relations.append((main_entity, token.lemma_, "can_do"))
 
-                # Обработка "one year" как единого узла
-                elif token.text == "one" and token.head.text == "year":
-                    entities.append(("one year", "Attribute"))
-                    relations.append((main_entity, "one year", "has_attribute"))
+                    # Добавление наречий к глаголу (например, "barks loudly")
+                    for child in token.children:
+                        if child.dep_ == "advmod":
+                            entities.append((child.text.lower(), "Attribute"))
+                            relations.append((token.lemma_, child.text.lower(), "has_attribute"))
 
-                # Обработка связанного объекта "cat"
-                elif token.text == "cat" and token.dep_ == "pobj" and token.head.dep_ == "prep":
-                    entities.append((token.text, "RelatedEntity"))
-                    relations.append((main_entity, token.text, "related_to"))
+                    # Обработка объектов, связанных с глаголами
+                    for child in token.children:
+                        if child.dep_ in ("dobj", "pobj", "attr"):
+                            entities.append((child.text, "Attribute"))
+                            relations.append((token.lemma_, child.text, "has_attribute"))
 
-                # Слово "animal" должно быть добавлено как атрибут
-                elif token.text == "animal" and token.dep_ == "attr":
-                    entities.append((token.text, "Attribute"))
-                    relations.append((main_entity, token.text, "has_attribute"))
+                        # Уточняющие предлоги (например, "with its owner")
+                        if child.dep_ == "prep":
+                            for grandchild in child.children:
+                                if grandchild.dep_ in ("pobj", "dobj"):
+                                    entities.append((grandchild.text, "Attribute"))
+                                    relations.append((token.lemma_, grandchild.text, "has_attribute"))
 
-                # Атрибут "fluffy"
-                elif token.text == "fluffy" and token.dep_ in ("amod", "attr"):
-                    entities.append((token.text, "Attribute"))
-                    relations.append((main_entity, token.text, "has_attribute"))
-
-                # Атрибут "young"
-                elif token.text == "young" and token.dep_ in ("amod", "attr"):
-                    entities.append((token.text, "Attribute"))
-                    relations.append((main_entity, token.text, "has_attribute"))
+                # Обработка связанных объектов через предлоги
+                if token.dep_ == "prep" and token.head.text == main_entity:
+                    for child in token.children:
+                        if child.dep_ == "pobj" and child.pos_ in ("NOUN", "PROPN"):
+                            entities.append((child.text, "RelatedEntity"))
+                            relations.append((main_entity, child.text, "related_to"))
 
         # Удаляем дубликаты
         entities = list(dict.fromkeys(entities))
@@ -103,6 +110,8 @@ class SemanticObjectEditor:
 
 # Пример использования
 editor = SemanticObjectEditor()
-text = "A kitten is a young animal, the offspring of a cat, with age up to one year, fluffy, often meows."
+
+# Новый текст для примера
+text = "The lion is a strong and fierce animal that roars loudly and hunts in the wild."
 editor.create_model_from_text(text)
 editor.display_graph()
