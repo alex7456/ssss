@@ -3,7 +3,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 # Загружаем модель SpaCy
-nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load("ru_core_news_sm")
 
 class SemanticObjectEditor:
     def __init__(self):
@@ -21,64 +21,34 @@ class SemanticObjectEditor:
         relations = []
 
         # Определение главных объектов (субъектов)
-        main_entities = []
+        main_entities = set()
         for token in doc:
-            if token.dep_ in ("nsubj", "ROOT") and token.pos_ in ("NOUN", "PROPN"):
-                main_entities.append(token.text)
-
-        # Обработка зависимых существительных через союз
-        for token in doc:
-            if token.dep_ == "cc":  # Ищем союзы (например, "and")
-                if token.head.text in main_entities:
-                    for child in token.head.children:
-                        if child.dep_ == "conj" and child.pos_ in ("NOUN", "PROPN"):
-                            if child.text not in main_entities:
-                                main_entities.append(child.text)
+            if token.dep_ in ("nsubj", "conj", "ROOT") and token.pos_ in ("NOUN", "PROPN"):
+                main_entities.add(token.text)
 
         # Добавляем главные сущности
         for entity in main_entities:
             entities.append((entity, "MainEntity"))
 
-        # Обработка атрибутов и связок (например, "are strong animals")
+        # Обработка атрибутов и связей
         for token in doc:
-            # Атрибуты через "amod" (например, "strong animals")
+            # Атрибуты через "amod" (например, "сильный лев")
             if token.dep_ == "amod" and token.head.text in main_entities:
                 entities.append((token.text, "Attribute"))
                 relations.append((token.head.text, token.text, "has_quality"))
 
-            # Атрибуты через "acomp" (например, "are strong")
-            if token.dep_ == "acomp" and token.head.text in main_entities:
-                entities.append((token.text, "Attribute"))
-                relations.append((token.head.text, token.text, "has_quality"))
+            # Обработка действий (глаголов) и их атрибутов
+            if token.pos_ == "VERB":
+                entities.append((token.lemma_, "Action"))
+                for entity in main_entities:
+                    relations.append((entity, token.lemma_, "can_do"))
 
-            # Прямые указания типа ("animals")
-            if token.dep_ == "attr" and token.head.text in main_entities:
-                entities.append((token.text, "Attribute"))
-                relations.append((token.head.text, token.text, "is_a"))
-
-        # Обработка действий (глаголов) и их атрибутов
-        for token in doc:
-            if token.pos_ == "VERB" and token.dep_ not in ("aux", "cop"):
-                for subject in main_entities:
-                    # Добавляем действие
-                    entities.append((token.lemma_, "Action"))
-                    relations.append((subject, token.lemma_, "can_do"))
-
-                    for child in token.children:
-                        # Наречия (например, "hunt skillfully")
-                        if child.dep_ == "advmod":
-                            entities.append((child.text.lower(), "Attribute"))
-                            relations.append((token.lemma_, child.text.lower(), "has_attribute"))
-
-                        # Прямые объекты (например, "hunt animals")
-                        if child.dep_ == "dobj" and child.pos_ in ("NOUN", "PROPN"):
-                            entities.append((child.text, "Object"))
-                            relations.append((token.lemma_, child.text, "acts_on"))
-
-                        # Атрибуты объектов (например, "strong animals")
-                        if child.dep_ == "amod" and child.head.dep_ == "dobj":
-                            entities.append((child.text, "Attribute"))
-                            relations.append((child.head.text, child.text, "has_quality"))
+                # Обработка зависимостей глаголов
+                for child in token.children:
+                    # Наречия (например, "громко рычать")
+                    if child.dep_ == "advmod":
+                        entities.append((child.text, "Attribute"))
+                        relations.append((token.lemma_, child.text, "has_attribute"))
 
         # Удаляем дубликаты сущностей и отношений
         entities = list(dict.fromkeys(entities))
@@ -152,7 +122,7 @@ class SemanticObjectEditor:
 editor = SemanticObjectEditor()
 
 # Новый текст для примера
-text = "The lion and the tiger are strong animals that roar loudly and hunt skillfully."
+text = "Лев и тигр — сильные животные, которые громко рычат и охотятся."
 editor.create_model_from_text(text)
 editor.display_graph()
 editor.visualize_graph()
