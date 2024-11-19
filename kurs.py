@@ -11,6 +11,7 @@ class SemanticObjectEditor:
         Инициализация класса.
         """
         self.graph = nx.DiGraph()  # Создаем пустой граф
+        self.general_terms = {"животные", "существо", "люди", "предметы"}  # Список обобщающих терминов
 
     def process_text(self, text):
         """
@@ -28,10 +29,18 @@ class SemanticObjectEditor:
 
         # Добавляем главные сущности
         for entity in main_entities:
-            entities.append((entity, "MainEntity"))
+            if entity.lower() in self.general_terms:
+                entities.append((entity, "Attribute"))  # Обобщающее слово как атрибут
+            else:
+                entities.append((entity, "MainEntity"))  # Главная сущность
 
         # Обработка атрибутов и связей
         for token in doc:
+            # Обобщающие слова как атрибуты
+            if token.text.lower() in self.general_terms and token.head.text in main_entities:
+                if token.text != token.head.text:
+                    relations.append((token.head.text, token.text, "is_a"))
+
             # Атрибуты через "amod" (например, "сильный лев")
             if token.dep_ == "amod" and token.head.text in main_entities:
                 entities.append((token.text, "Attribute"))
@@ -41,7 +50,8 @@ class SemanticObjectEditor:
             if token.pos_ == "VERB":
                 entities.append((token.lemma_, "Action"))
                 for entity in main_entities:
-                    relations.append((entity, token.lemma_, "can_do"))
+                    if entity.lower() not in self.general_terms:
+                        relations.append((entity, token.lemma_, "can_do"))
 
                 # Обработка зависимостей глаголов
                 for child in token.children:
