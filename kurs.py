@@ -15,53 +15,62 @@ class SemanticObjectEditor:
         self.general_terms = {"животные", "существо", "люди", "предметы"}  # Список обобщающих терминов
 
     def process_text(self, text):
+        """Обрабатывает текст и возвращает сущности и связи."""
         doc = nlp(text)
-        entities = []
-        relations = []
+        entities = set()
+        relations = set()
 
         # Определение главных объектов (субъектов)
         main_entities = set()
         for token in doc:
-            if token.dep_ in ("nsubj", "conj", "ROOT") and token.pos_ in ("NOUN", "PROPN"):
+            # Местоимения и существительные как субъекты
+            if token.dep_ in ("nsubj", "nsubjpass", "conj", "ROOT") and token.pos_ in ("NOUN", "PROPN", "PRON"):
                 main_entities.add(token.text)
 
         # Добавляем главные сущности
         for entity in main_entities:
             if entity.lower() in self.general_terms:
-                entities.append((entity, "Attribute"))
+                entities.add((entity, "Attribute"))
             else:
-                entities.append((entity, "MainEntity"))
+                entities.add((entity, "MainEntity"))
 
         # Обработка атрибутов и связей
         for token in doc:
-            # Обобщающие слова как атрибуты
-            if token.text.lower() in self.general_terms and token.head.text in main_entities:
-                if token.text != token.head.text:
-                    relations.append((token.head.text, token.text, "is_a"))
-
-            # Атрибуты через "amod"
+            # Атрибуты (amod) для существительных
             if token.dep_ == "amod" and token.head.text in main_entities:
-                entities.append((token.text, "Attribute"))
-                relations.append((token.head.text, token.text, "has_quality"))
+                entities.add((token.text, "Attribute"))
+                relations.add((token.head.text, token.text, "has_quality"))
 
-            # Обработка действий (глаголов) и их атрибутов
+            # Обработка прилагательных, связанных через "attr" с местоимениями
+            if token.pos_ == "ADJ" and token.dep_ in ("attr", "amod"):
+                if token.head.pos_ == "PRON":  # Прилагательное связано с местоимением
+                    entities.add((token.text, "Attribute"))
+                    relations.add((token.head.text, token.text, "has_quality"))
+
+            # Обработка глаголов (действия) и их атрибутов
             if token.pos_ == "VERB":
-                entities.append((token.lemma_, "Action"))
+                entities.add((token.lemma_, "Action"))
                 for entity in main_entities:
                     if entity.lower() not in self.general_terms:
-                        relations.append((entity, token.lemma_, "can_do"))
+                        relations.add((entity, token.lemma_, "can_do"))
 
+                # Обработка дополнений и наречий
                 for child in token.children:
-                    if child.dep_ == "advmod":
-                        entities.append((child.text, "Attribute"))
-                        relations.append((token.lemma_, child.text, "has_attribute"))
+                    if child.dep_ == "dobj":  # Прямое дополнение
+                        entities.add((child.text, "Object"))
+                        relations.add((token.lemma_, child.text, "acts_on"))
+                    if child.dep_ == "advmod":  # Наречия как атрибуты действия
+                        entities.add((child.text, "Attribute"))
+                        relations.add((token.lemma_, child.text, "has_attribute"))
 
-        entities = list(dict.fromkeys(entities))
-        relations = list(dict.fromkeys(relations))
+        # Преобразуем множества в списки для удаления дубликатов
+        entities = list(entities)
+        relations = list(relations)
 
         return entities, relations
 
     def add_to_graph(self, entities, relations):
+        """Добавляет сущности и связи в граф."""
         for entity, label in entities:
             self.graph.add_node(entity, label=label)
 
@@ -70,10 +79,12 @@ class SemanticObjectEditor:
                 self.graph.add_edge(head, tail, relation=relation)
 
     def create_model_from_text(self, text):
+        """Создает модель графа на основе текста."""
         entities, relations = self.process_text(text)
         self.add_to_graph(entities, relations)
 
     def display_graph(self):
+        """Выводит узлы и связи графа в консоль."""
         print("\nGraph Nodes:")
         for node in self.graph.nodes(data=True):
             print(f"Node: {node}")
@@ -83,6 +94,7 @@ class SemanticObjectEditor:
             print(f"Edge: {edge}")
 
     def visualize_graph(self):
+        """Визуализирует граф с помощью matplotlib."""
         pos = nx.spring_layout(self.graph)
         labels = nx.get_edge_attributes(self.graph, "relation")
         node_colors = [
@@ -102,7 +114,9 @@ class SemanticObjectEditor:
         plt.show()
 
     def clear_graph(self):
+        """Очищает граф."""
         self.graph.clear()
+
 
 class SemanticApp:
     def __init__(self, root):
@@ -150,10 +164,11 @@ class SemanticApp:
 
     def paste_text(self):
         """Вставляем текст из буфера обмена в поле ввода."""
-        clipboard = root.clipboard_get()  # Получаем текст из буфера обмена
+        clipboard = self.root.clipboard_get()  # Получаем текст из буфера обмена
         self.text_input.insert("insert", clipboard)  # Вставляем в поле ввода
 
     def process_text(self):
+        """Обрабатывает введенный текст и отображает результаты."""
         text = self.text_input.get("1.0", "end-1c")
         self.editor.clear_graph()  # Очистим граф перед новым анализом
         self.editor.create_model_from_text(text)
@@ -175,6 +190,7 @@ class SemanticApp:
 
         # Вывод информации о графе в консоль
         self.editor.display_graph()
+
 
 if __name__ == "__main__":
     root = tk.Tk()
