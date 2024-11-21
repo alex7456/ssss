@@ -20,6 +20,11 @@ class SemanticObjectEditor:
         entities = set()
         relations = set()
 
+        # Отладочный вывод структуры предложения
+        print("\nОтладочный вывод структуры предложения:")
+        for token in doc:
+            print(f"Токен: {token.text}, Лемма: {token.lemma_}, POS: {token.pos_}, Dep: {token.dep_}, Head: {token.head.text}")
+
         # Определение главных объектов (субъектов)
         main_entities = set()
         for token in doc:
@@ -52,16 +57,18 @@ class SemanticObjectEditor:
                 entities.add((token.lemma_, "Action"))
                 for entity in main_entities:
                     if entity.lower() not in self.general_terms:
-                        relations.add((entity, token.lemma_, "can_do"))
+                        relations.add((entity, token.lemma_, "performs"))
 
-                # Обработка дополнений и наречий
+                # Обработка прямых объектов (obj)
                 for child in token.children:
-                    if child.dep_ == "dobj":  # Прямое дополнение
+                    if child.dep_ in ("obj", "dobj"):  # Прямое дополнение
                         entities.add((child.text, "Object"))
-                        relations.add((token.lemma_, child.text, "acts_on"))
-                    if child.dep_ == "advmod":  # Наречия как атрибуты действия
-                        entities.add((child.text, "Attribute"))
-                        relations.add((token.lemma_, child.text, "has_attribute"))
+                        relations.add((token.lemma_, child.text, "acts_on"))  # Действие над объектом
+
+                # Обработка наречий как атрибутов действия
+                if child.dep_ == "advmod":
+                    entities.add((child.text, "Attribute"))
+                    relations.add((token.lemma_, child.text, "has_attribute"))
 
         # Преобразуем множества в списки для удаления дубликатов
         entities = list(entities)
