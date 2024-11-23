@@ -2,9 +2,7 @@ import spacy
 import networkx as nx
 import matplotlib.pyplot as plt
 import tkinter as tk
-from tkinter import messagebox
 from tkinter import Scrollbar
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 # Загружаем модель SpaCy
 nlp = spacy.load("ru_core_news_sm")
@@ -20,16 +18,23 @@ class SemanticObjectEditor:
         entities = set()
         relations = set()
 
-        # Отладочный вывод структуры предложения
         print("\nОтладочный вывод структуры предложения:")
         for token in doc:
-            print(f"Токен: {token.text}, Лемма: {token.lemma_}, POS: {token.pos_}, Dep: {token.dep_}, Head: {token.head.text}")
+            print(f"Токен: {token.text}, Лемма: {token.lemma_}, POS: {token.pos_}, Dep: {token.dep_}, Head: {token.head.text}, Morph: {token.morph}")
 
         # Определение главных объектов (субъектов)
         main_entities = set()
         for token in doc:
+            # Проверяем, является ли предложение императивным
+            if token.dep_ == "ROOT" and token.morph.get("Mood") == ["Imp"]:
+                main_entities.add("Ты")  # Добавляем неявный субъект "Ты"
+
             # Местоимения и существительные как субъекты
-            if token.dep_ in ("nsubj", "nsubjpass", "conj", "ROOT") and token.pos_ in ("NOUN", "PROPN", "PRON"):
+            if token.dep_ == "nsubj" and token.head.morph.get("Mood") != ["Imp"]:
+                main_entities.add(token.text)
+
+            # Существительные как главные сущности
+            if token.pos_ in ("NOUN", "PROPN") and token.dep_ == "ROOT":
                 main_entities.add(token.text)
 
         # Добавляем главные сущности
@@ -41,14 +46,16 @@ class SemanticObjectEditor:
 
         # Обработка атрибутов и связей
         for token in doc:
-            # Атрибуты (amod) для существительных
+            # Обработка прилагательных, связанных через "amod" с существительными
             if token.dep_ == "amod" and token.head.text in main_entities:
+                print(f"Прилагательное найдено: {token.text} связано с {token.head.text}")
                 entities.add((token.text, "Attribute"))
                 relations.add((token.head.text, token.text, "has_quality"))
 
-            # Обработка прилагательных, связанных через "attr" с местоимениями
+            # Обработка прилагательных через "attr"
             if token.pos_ == "ADJ" and token.dep_ in ("attr", "amod"):
                 if token.head.pos_ == "PRON":  # Прилагательное связано с местоимением
+                    print(f"Прилагательное найдено: {token.text} связано с местоимением {token.head.text}")
                     entities.add((token.text, "Attribute"))
                     relations.add((token.head.text, token.text, "has_quality"))
 
@@ -59,29 +66,41 @@ class SemanticObjectEditor:
                     if entity.lower() not in self.general_terms:
                         relations.add((entity, token.lemma_, "performs"))
 
-                # Обработка прямых объектов (obj)
                 for child in token.children:
-                    if child.dep_ in ("obj", "dobj"):  # Прямое дополнение
+                    # Если есть субъект в императивном предложении, он становится объектом
+                    if child.dep_ == "nsubj" and token.morph.get("Mood") == ["Imp"]:
                         entities.add((child.text, "Object"))
-                        relations.add((token.lemma_, child.text, "acts_on"))  # Действие над объектом
+                        relations.add((token.lemma_, child.text, "acts_on"))
 
-                # Обработка наречий как атрибутов действия
-                if child.dep_ == "advmod":
-                    entities.add((child.text, "Attribute"))
-                    relations.add((token.lemma_, child.text, "has_attribute"))
+                    # Обработка прямых объектов (obj)
+                    if child.dep_ in ("obj", "dobj"):
+                        entities.add((child.text, "Object"))
+                        relations.add((token.lemma_, child.text, "acts_on"))
+
+                    # Обработка наречий как атрибутов действия
+                    if child.dep_ == "advmod":
+                        entities.add((child.text, "Attribute"))
+                        relations.add((token.lemma_, child.text, "has_attribute"))
 
         # Преобразуем множества в списки для удаления дубликатов
         entities = list(entities)
         relations = list(relations)
 
+        print("\nСущности и связи:")
+        print("Сущности:", entities)
+        print("Связи:", relations)
+
         return entities, relations
 
     def add_to_graph(self, entities, relations):
         """Добавляет сущности и связи в граф."""
+        print("\nДобавление узлов и связей в граф...")
         for entity, label in entities:
+            print(f"Добавление узла: {entity} ({label})")
             self.graph.add_node(entity, label=label)
 
         for head, tail, relation in relations:
+            print(f"Добавление связи: {head} -[{relation}]-> {tail}")
             if self.graph.has_node(head) and self.graph.has_node(tail):
                 self.graph.add_edge(head, tail, relation=relation)
 
