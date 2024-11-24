@@ -29,7 +29,29 @@ class SemanticObjectEditor:
             if token.dep_ == "ROOT" and token.morph.get("Mood") == ["Imp"]:
                 main_entities.add("Ты")  # Добавляем неявный субъект "Ты"
 
-            # Местоимения и существительные как субъекты
+            # Обработка вопросительных слов
+            if token.text.lower() in {"кто", "что", "где", "как", "почему", "зачем", "когда"}:
+                print(f"Вопросительное слово найдено: {token.text}")
+                entities.add((token.text.lower(), "Question"))
+                relations.add(("Вопрос", token.text.lower(), "defines"))
+                if token.head.pos_ == "VERB":  # Связываем вопросительное слово с глаголом
+                    relations.add((token.text.lower(), token.head.lemma_, "relates_to"))
+                elif token.dep_ == "advmod":  # Если это обстоятельство, связываем как атрибут действия
+                    relations.add((token.head.lemma_, token.text.lower(), "has_attribute"))
+
+        # Добавляем временные маркеры как Question и Attribute
+        for token in doc:
+            if token.text.lower() == "когда":
+                print(f"Временной маркер найден: {token.text}")
+                # Добавляем как Question
+                entities.add((token.text.lower(), "Question"))
+                relations.add(("Вопрос", token.text.lower(), "defines"))
+                # Добавляем как Attribute, связанный с глаголом
+                if token.head.pos_ == "VERB":
+                    relations.add((token.head.lemma_, token.text.lower(), "has_attribute"))
+
+        # Местоимения и существительные как субъекты
+        for token in doc:
             if token.dep_ == "nsubj" and token.head.morph.get("Mood") != ["Imp"]:
                 main_entities.add(token.text)
 
@@ -40,47 +62,40 @@ class SemanticObjectEditor:
         # Добавляем главные сущности
         for entity in main_entities:
             if entity.lower() in self.general_terms:
-                entities.add((entity, "Attribute"))
+                entities.add((entity.lower(), "Attribute"))
             else:
-                entities.add((entity, "MainEntity"))
+                entities.add((entity.lower(), "MainEntity"))
 
         # Обработка атрибутов и связей
         for token in doc:
             # Обработка прилагательных, связанных через "amod" с существительными
-            if token.dep_ == "amod" and token.head.text in main_entities:
+            if token.dep_ == "amod" and token.head.text.lower() in main_entities:
                 print(f"Прилагательное найдено: {token.text} связано с {token.head.text}")
-                entities.add((token.text, "Attribute"))
-                relations.add((token.head.text, token.text, "has_quality"))
-
-            # Обработка прилагательных через "attr"
-            if token.pos_ == "ADJ" and token.dep_ in ("attr", "amod"):
-                if token.head.pos_ == "PRON":  # Прилагательное связано с местоимением
-                    print(f"Прилагательное найдено: {token.text} связано с местоимением {token.head.text}")
-                    entities.add((token.text, "Attribute"))
-                    relations.add((token.head.text, token.text, "has_quality"))
+                entities.add((token.text.lower(), "Attribute"))
+                relations.add((token.head.text.lower(), token.text.lower(), "has_quality"))
 
             # Обработка глаголов (действия) и их атрибутов
             if token.pos_ == "VERB":
                 entities.add((token.lemma_, "Action"))
                 for entity in main_entities:
                     if entity.lower() not in self.general_terms:
-                        relations.add((entity, token.lemma_, "performs"))
+                        relations.add((entity.lower(), token.lemma_, "performs"))
 
                 for child in token.children:
                     # Если есть субъект в императивном предложении, он становится объектом
                     if child.dep_ == "nsubj" and token.morph.get("Mood") == ["Imp"]:
-                        entities.add((child.text, "Object"))
-                        relations.add((token.lemma_, child.text, "acts_on"))
+                        entities.add((child.text.lower(), "Object"))
+                        relations.add((token.lemma_, child.text.lower(), "acts_on"))
 
                     # Обработка прямых объектов (obj)
                     if child.dep_ in ("obj", "dobj"):
-                        entities.add((child.text, "Object"))
-                        relations.add((token.lemma_, child.text, "acts_on"))
+                        entities.add((child.text.lower(), "Object"))
+                        relations.add((token.lemma_, child.text.lower(), "acts_on"))
 
                     # Обработка наречий как атрибутов действия
-                    if child.dep_ == "advmod":
-                        entities.add((child.text, "Attribute"))
-                        relations.add((token.lemma_, child.text, "has_attribute"))
+                    if child.dep_ == "advmod" and child.text.lower() not in {"кто", "что", "где", "как", "почему", "зачем"}:
+                        entities.add((child.text.lower(), "Attribute"))
+                        relations.add((token.lemma_, child.text.lower(), "has_attribute"))
 
         # Преобразуем множества в списки для удаления дубликатов
         entities = list(entities)
@@ -124,9 +139,12 @@ class SemanticObjectEditor:
         pos = nx.spring_layout(self.graph)
         labels = nx.get_edge_attributes(self.graph, "relation")
         node_colors = [
-            "skyblue" if self.graph.nodes[node]["label"] == "MainEntity" else
-            "lightgreen" if self.graph.nodes[node]["label"] == "Action" else
-            "orange" for node in self.graph.nodes
+            # Приоритетный цвет для вопросительных слов
+            "orange" if "Question" in self.graph.nodes[node]["label"] else
+            "skyblue" if "MainEntity" in self.graph.nodes[node]["label"] else
+            "lightgreen" if "Action" in self.graph.nodes[node]["label"]  else
+            "yellow"
+            for node in self.graph.nodes
         ]
         nx.draw(
             self.graph,
