@@ -24,12 +24,32 @@ class SemanticObjectEditor:
 
         # Определение главных объектов (субъектов)
         main_entities = set()
-        for token in doc:
-            # Проверяем, является ли предложение императивным
-            if token.dep_ == "ROOT" and token.morph.get("Mood") == ["Imp"]:
-                main_entities.add("Ты")  # Добавляем неявный субъект "Ты"
 
-            # Обработка вопросительных слов
+        # Обработка императивных глаголов
+        for token in doc:
+            # Проверяем, является ли корень глаголом в императивной форме
+            if token.dep_ == "ROOT" and token.pos_ == "VERB" and token.morph.get("Mood") == ["Imp"]:
+                print(f"Императив найден: {token.text}")
+                entities.add((token.lemma_, "Action"))  # Добавляем глагол как действие
+
+                # Ищем объекты действия
+                for child in token.children:
+                    if child.dep_ in ("obj", "nmod"):  # Прямые объекты и дополнения
+                        entities.add((child.text.lower(), "Object"))
+                        relations.add((token.lemma_, child.text.lower(), "acts_on"))
+
+        # Обработка, если ROOT - существительное, но по контексту может быть действием
+        for token in doc:
+            if token.dep_ == "ROOT" and token.pos_ == "NOUN" and token.head == token:
+                print(f"Обнаружен ROOT, который может быть действием: {token.text}")
+                entities.add((token.lemma_, "Action"))  # Интерпретируем как действие
+                for child in token.children:
+                    if child.dep_ in ("obj", "nmod"):  # Обработка объектов
+                        entities.add((child.text.lower(), "Object"))
+                        relations.add((token.lemma_, child.text.lower(), "acts_on"))
+
+        # Обработка вопросительных слов
+        for token in doc:
             if token.text.lower() in {"кто", "что", "где", "как", "почему", "зачем", "когда"}:
                 print(f"Вопросительное слово найдено: {token.text}")
                 entities.add((token.text.lower(), "Question"))
@@ -41,14 +61,14 @@ class SemanticObjectEditor:
 
         # Добавляем временные маркеры как Question и Attribute
         for token in doc:
-            if token.text.lower() == "когда":
+            if token.text.lower() == "вчера":
                 print(f"Временной маркер найден: {token.text}")
                 # Добавляем как Question
-                entities.add((token.text.lower(), "Question"))
+                entities.add((token.text.lower(), "Attribute"))
                 relations.add(("Вопрос", token.text.lower(), "defines"))
                 # Добавляем как Attribute, связанный с глаголом
-                if token.head.pos_ == "VERB":
-                    relations.add((token.head.lemma_, token.text.lower(), "has_attribute"))
+                if token.head.pos_ == "VERB" or token.head.pos_ == "AUX":
+                    relations.add((token.head.lemma_, token.text.lower(), "has_time"))
 
         # Местоимения и существительные как субъекты
         for token in doc:
@@ -97,6 +117,11 @@ class SemanticObjectEditor:
                         entities.add((child.text.lower(), "Attribute"))
                         relations.add((token.lemma_, child.text.lower(), "has_attribute"))
 
+                    # Обработка обстоятельства места ("здесь")
+                    if child.dep_ == "advmod" and child.text.lower() == "здесь":
+                        entities.add((child.text.lower(), "Attribute"))
+                        relations.add((token.head.lemma_, child.text.lower(), "has_location"))
+
         # Преобразуем множества в списки для удаления дубликатов
         entities = list(entities)
         relations = list(relations)
@@ -139,10 +164,9 @@ class SemanticObjectEditor:
         pos = nx.spring_layout(self.graph)
         labels = nx.get_edge_attributes(self.graph, "relation")
         node_colors = [
-            # Приоритетный цвет для вопросительных слов
             "orange" if "Question" in self.graph.nodes[node]["label"] else
             "skyblue" if "MainEntity" in self.graph.nodes[node]["label"] else
-            "lightgreen" if "Action" in self.graph.nodes[node]["label"]  else
+            "lightgreen" if "Action" in self.graph.nodes[node]["label"] else
             "yellow"
             for node in self.graph.nodes
         ]
@@ -172,6 +196,7 @@ class SemanticApp:
         self.text_input_label.pack()
 
         # Добавляем поле прокрутки
+
         self.text_input_frame = tk.Frame(root)
         self.text_input_frame.pack()
 
@@ -187,6 +212,9 @@ class SemanticApp:
         # Создание контекстного меню с пунктом вставки
         self.context_menu = tk.Menu(self.root, tearoff=0)
         self.context_menu.add_command(label="Вставить", command=self.paste_text)
+
+        # Пр
+
 
         # Привязка контекстного меню к полю ввода
         self.text_input.bind("<Button-3>", self.show_context_menu)
