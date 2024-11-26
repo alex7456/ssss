@@ -3,7 +3,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import tkinter as tk
 from tkinter import Scrollbar
-
+import json
 # Загружаем модель SpaCy
 nlp = spacy.load("ru_core_news_sm")
 
@@ -139,6 +139,15 @@ class SemanticObjectEditor:
         print("Связи:", relations)
 
         return entities, relations
+    
+    def generate_json(self, entities, relations):
+        """Генерирует JSON-объект из сущностей и связей."""
+        data = {
+            "entities": [{"name": entity, "type": label} for entity, label in entities],
+            "relations": [{"from": head, "to": tail, "relation": relation} for head, tail, relation in relations],
+        }
+        return json.dumps(data, ensure_ascii=False, indent=4)
+    
 
     def add_to_graph(self, entities, relations):
         """Добавляет сущности и связи в граф."""
@@ -235,6 +244,13 @@ class SemanticApp:
         self.model_output = tk.Text(root, height=10, width=60)
         self.model_output.pack()
 
+
+        self.json_output_label = tk.Label(root, text="Модель в формате JSON:")
+        self.json_output_label.pack()
+
+        self.json_output = tk.Text(root, height=15, width=60)
+        self.json_output.pack()
+        
     def show_context_menu(self, event):
         """Отображаем контекстное меню при нажатии правой кнопки мыши."""
         self.context_menu.post(event.x_root, event.y_root)
@@ -262,11 +278,17 @@ class SemanticApp:
         self.model_output.delete("1.0", "end")
         self.model_output.insert("1.0", formatted_model)
 
+        # Генерация JSON и вывод в текстовое поле
+        json_output = self.editor.generate_json(entities, relations)
+        self.json_output.delete("1.0", "end")
+        self.json_output.insert("1.0", json_output)
+
         # Отображение графика
         self.editor.visualize_graph()
 
         # Вывод информации о графе в консоль
         self.editor.display_graph()
+
 
 
 if __name__ == "__main__":
