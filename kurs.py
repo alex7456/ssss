@@ -86,6 +86,14 @@ class SemanticObjectEditor:
             else:
                 entities.add((entity.lower(), "MainEntity"))
 
+        # Обработка обстоятельств места
+        for token in doc:
+            if token.dep_ == "obl" and any(child.dep_ == "case" for child in token.children):
+                place = " ".join([child.text for child in token.children if child.dep_ == "case"]) + " " + token.text
+                print(f"Обнаружено место действия: {place}")
+                entities.add((place.lower(), "Attribute"))
+                relations.add((token.head.lemma_, place.lower(), "has_location"))
+
         # Обработка атрибутов и связей
         for token in doc:
             # Обработка прилагательных, связанных через "amod" с существительными
@@ -212,9 +220,6 @@ class SemanticApp:
         # Создание контекстного меню с пунктом вставки
         self.context_menu = tk.Menu(self.root, tearoff=0)
         self.context_menu.add_command(label="Вставить", command=self.paste_text)
-
-        # Пр
-
 
         # Привязка контекстного меню к полю ввода
         self.text_input.bind("<Button-3>", self.show_context_menu)
