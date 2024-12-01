@@ -2,6 +2,7 @@ import spacy
 import networkx as nx
 import matplotlib.pyplot as plt
 import tkinter as tk
+from tkinter import ttk
 from tkinter import Scrollbar
 import json
 # Загружаем модель SpaCy
@@ -208,65 +209,71 @@ class SemanticApp:
         self.root = root
         self.editor = SemanticObjectEditor()
 
+        # Настраиваем стиль
+        style = ttk.Style()
+        style.configure("TLabel", font=("Arial", 12), padding=5)
+        style.configure("TButton", font=("Arial", 12), padding=5)
+        style.configure("TFrame", background="#f4f4f4")
+        style.configure("TText", font=("Arial", 10))
+        style.configure("TScrollbar", background="#cccccc")
+
+        # Основной фрейм
+        self.main_frame = ttk.Frame(root, padding=10, style="TFrame")
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Заголовок
+        self.title_label = ttk.Label(self.main_frame, text="Редактор Семантических Объектов", style="TLabel")
+        self.title_label.pack(pady=10)
+
         # Окно ввода текста
-        self.text_input_label = tk.Label(root, text="Введите текст:")
-        self.text_input_label.pack()
+        self.text_input_label = ttk.Label(self.main_frame, text="Введите текст:", style="TLabel")
+        self.text_input_label.pack(anchor="w")
 
-        # Добавляем поле прокрутки
+        # Поле ввода текста с прокруткой
+        self.text_input_frame = ttk.Frame(self.main_frame)
+        self.text_input_frame.pack(fill=tk.X, pady=5)
 
-        self.text_input_frame = tk.Frame(root)
-        self.text_input_frame.pack()
+        self.text_input = tk.Text(self.text_input_frame, height=6, wrap=tk.WORD, font=("Arial", 10))
+        self.text_input.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Текстовое поле с горизонтальной прокруткой
-        self.text_input = tk.Text(self.text_input_frame, height=6, width=60)
-        self.text_input.pack(side=tk.LEFT)
-
-        self.scrollbar = Scrollbar(self.text_input_frame, orient="horizontal", command=self.text_input.xview)
-        self.scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-
-        self.text_input.config(xscrollcommand=self.scrollbar.set)
-
-        # Создание контекстного меню с пунктом вставки
-        self.context_menu = tk.Menu(self.root, tearoff=0)
-        self.context_menu.add_command(label="Вставить", command=self.paste_text)
-
-        # Привязка контекстного меню к полю ввода
-        self.text_input.bind("<Button-3>", self.show_context_menu)
+        self.scrollbar = Scrollbar(self.text_input_frame, command=self.text_input.yview, orient=tk.VERTICAL)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.text_input.configure(yscrollcommand=self.scrollbar.set)
 
         # Кнопка обработки текста
-        self.process_button = tk.Button(root, text="Обработать", command=self.process_text)
-        self.process_button.pack()
+        self.process_button = ttk.Button(self.main_frame, text="Обработать", command=self.process_text)
+        self.process_button.pack(pady=10)
 
-        # Поле для вывода формализованной модели
-        self.model_output_label = tk.Label(root, text="Формализованная модель:")
-        self.model_output_label.pack()
+        # Поле вывода формализованной модели
+        self.model_output_label = ttk.Label(self.main_frame, text="Формализованная модель:", style="TLabel")
+        self.model_output_label.pack(anchor="w", pady=5)
 
-        self.model_output = tk.Text(root, height=10, width=60)
-        self.model_output.pack()
+        self.model_output = tk.Text(self.main_frame, height=10, wrap=tk.WORD, font=("Arial", 10), state=tk.DISABLED)
+        self.model_output.pack(fill=tk.BOTH, pady=5)
 
+        # Поле вывода JSON
+        self.json_output_label = ttk.Label(self.main_frame, text="Модель в формате JSON:", style="TLabel")
+        self.json_output_label.pack(anchor="w", pady=5)
 
-        self.json_output_label = tk.Label(root, text="Модель в формате JSON:")
-        self.json_output_label.pack()
+        self.json_output = tk.Text(self.main_frame, height=15, wrap=tk.WORD, font=("Arial", 10), state=tk.DISABLED)
+        self.json_output.pack(fill=tk.BOTH, pady=5)
 
-        self.json_output = tk.Text(root, height=15, width=60)
-        self.json_output.pack()
-        
-    def show_context_menu(self, event):
-        """Отображаем контекстное меню при нажатии правой кнопки мыши."""
-        self.context_menu.post(event.x_root, event.y_root)
+        # Нижняя панель кнопок
+        self.button_frame = ttk.Frame(self.main_frame)
+        self.button_frame.pack(fill=tk.X, pady=10)
 
-    def paste_text(self):
-        """Вставляем текст из буфера обмена в поле ввода."""
-        clipboard = self.root.clipboard_get()  # Получаем текст из буфера обмена
-        self.text_input.insert("insert", clipboard)  # Вставляем в поле ввода
+        self.clear_button = ttk.Button(self.button_frame, text="Очистить", command=self.clear_text)
+        self.clear_button.pack(side=tk.LEFT, padx=5)
+
+        self.exit_button = ttk.Button(self.button_frame, text="Выход", command=self.root.quit)
+        self.exit_button.pack(side=tk.RIGHT, padx=5)
 
     def process_text(self):
         """Обрабатывает введенный текст и отображает результаты."""
         text = self.text_input.get("1.0", "end-1c")
-        self.editor.clear_graph()  # Очистим граф перед новым анализом
+        self.editor.clear_graph()
         self.editor.create_model_from_text(text)
 
-        # Получение формализованной модели
         entities, relations = self.editor.process_text(text)
         formatted_model = "Сущности:\n"
         for entity, label in entities:
@@ -275,26 +282,33 @@ class SemanticApp:
         for head, tail, relation in relations:
             formatted_model += f"{head} -[{relation}]-> {tail}\n"
 
+        self.model_output.config(state=tk.NORMAL)
         self.model_output.delete("1.0", "end")
         self.model_output.insert("1.0", formatted_model)
+        self.model_output.config(state=tk.DISABLED)
 
-        # Генерация JSON и вывод в текстовое поле
         json_output = self.editor.generate_json(entities, relations)
+        self.json_output.config(state=tk.NORMAL)
         self.json_output.delete("1.0", "end")
         self.json_output.insert("1.0", json_output)
+        self.json_output.config(state=tk.DISABLED)
 
-        # Отображение графика
         self.editor.visualize_graph()
 
-        # Вывод информации о графе в консоль
-        self.editor.display_graph()
-
+    def clear_text(self):
+        """Очищает все текстовые поля."""
+        self.text_input.delete("1.0", "end")
+        self.model_output.config(state=tk.NORMAL)
+        self.model_output.delete("1.0", "end")
+        self.model_output.config(state=tk.DISABLED)
+        self.json_output.config(state=tk.NORMAL)
+        self.json_output.delete("1.0", "end")
+        self.json_output.config(state=tk.DISABLED)
 
 
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("Редактор Семантических Объектов")
-
+    root.geometry("800x600")
     app = SemanticApp(root)
-
     root.mainloop()
