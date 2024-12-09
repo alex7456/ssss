@@ -87,13 +87,26 @@ class SemanticObjectEditor:
             else:
                 entities.add((entity.lower(), "MainEntity"))
 
-        # Обработка обстоятельств места
+       # Обработка обстоятельств места
         for token in doc:
             if token.dep_ == "obl" and any(child.dep_ == "case" for child in token.children):
                 place = " ".join([child.text for child in token.children if child.dep_ == "case"]) + " " + token.text
                 print(f"Обнаружено место действия: {place}")
                 entities.add((place.lower(), "Attribute"))
-                relations.add((token.head.lemma_, place.lower(), "has_location"))
+                if token.head.pos_ == "VERB":
+                    relations.add((token.head.lemma_, place.lower(), "has_location"))
+
+        # Обработка однородных глаголов
+        for token in doc:
+            if token.dep_ == "conj" and token.head.pos_ == "VERB":
+                print(f"Обнаружено однородное действие: {token.text} связано с {token.head.text}")
+                entities.add((token.lemma_, "Action"))
+                relations.add((token.head.lemma_, token.lemma_, "related_action"))
+        # Проверяем субъект для этого действия
+            for child in token.head.children:
+                if child.dep_ == "nsubj":
+                    relations.add((child.text.lower(), token.lemma_, "performs"))
+
 
         # Обработка атрибутов и связей
         for token in doc:
@@ -189,7 +202,7 @@ class SemanticObjectEditor:
 
     def visualize_graph(self):
         """Визуализирует граф с помощью matplotlib."""
-        pos = nx.spring_layout(self.graph)
+        pos = nx.spring_layout(self.graph, k=2.0, iterations=100)
         labels = nx.get_edge_attributes(self.graph, "relation")
         node_colors = [
             "orange" if "Question" in self.graph.nodes[node]["label"] else
@@ -198,15 +211,19 @@ class SemanticObjectEditor:
             "yellow"
             for node in self.graph.nodes
         ]
+        plt.figure(figsize=(20, 20))
         nx.draw(
             self.graph,
             pos,
             with_labels=True,
-            node_size=2000,
+            node_size=3000,
             node_color=node_colors,
-            font_size=10,
+            font_size=12,
+            edgecolors="black",
+            width=2,
         )
-        nx.draw_networkx_edge_labels(self.graph, pos, edge_labels=labels)
+        nx.draw_networkx_edge_labels(self.graph, pos, edge_labels=labels, font_size=10,label_pos=0.5)
+        plt.title("Семантический граф", fontsize=16)
         plt.show()
 
     def clear_graph(self):
